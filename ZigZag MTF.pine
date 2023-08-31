@@ -1,0 +1,1251 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © GM, 2023
+
+//@version=5 
+indicator("ZZ Orderblock MTF", "ZZ OB MTF", overlay = true, max_bars_back = 4999, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+max_bars_back(time,4999)
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// Short mode inputs                                                                  
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+short_mode_zz                       = input.bool(false, "Short mode", group="General", inline = "box_position")
+input_start_zz                      = input.int(0, "Start", -9999999999, 9999999999, 1, group="General", inline = "box_position", tooltip = "Box start bar")
+input_end_zz                        = input.int(1, "End", -9999999999, 9999999999, 1, group="General", inline = "box_position", tooltip = "Box end bar")
+x_offset                            = input(-1, title = "Zone bar offset", tooltip = "To avoid overlapping candles wicks", group = "General")
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// Tf1 inputs                                                                  
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+enable_tf1                          = input(true, "Enable | ", group="Timeframe 1", inline = '1')
+showzigzag1                         = input(defval = true, title = "ZigZag | ", group = "Timeframe 1", inline = '1')
+levels1_enable                      = input(true, "Levels | ", group = "Timeframe 1", inline = '1')
+detect_side_market_tf1              = input(true, "Side market detection", group = "Timeframe 1", inline = '1')
+tf1                                 = input.string("15", "Timeframe", ["1", "5", "10", "15", "20", "30", "60", "120", "240", "480", "D", "2D", "W", "M", "3M", "12M"], group="Timeframe 1")
+zone_size_tf1                       = input.float(0.3, title = "Zone size (%)", group="Timeframe 1", tooltip = "Zone size in percent", step = 0.01) / 100
+border_width_tf1                    = input(1, "Zone border width", group = "Timeframe 1")
+period_tf1                          = input.int(5, title="Zigzag period", minval = 2, maxval = 500, group = "Timeframe 1")
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// Tf2 inputs                                                                  
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+enable_tf2                          = input(true, "Enable | ", group="Timeframe 2", inline = '1')
+showzigzag2                         = input(defval = true, title = "ZigZag | ", group = "Timeframe 2", inline = '1')
+levels2_enable                      = input(true, "Levels | ", group = "Timeframe 2", inline = '1')
+detect_side_market_tf2              = input(true, "Side market detection", group = "Timeframe 2", inline = '1')
+tf2                                 = input.string("D", "Timeframe", ["1", "5", "10", "15", "20", "30", "60", "120", "240", "480", "D", "2D", "W", "M", "3M", "12M"], group="Timeframe 2")
+zone_size_tf2                       = input.float(0.3, title = "Zone size (%)", group="Timeframe 2", tooltip = "Zone size in percent", step = 0.01) / 100
+border_width_tf2                    = input(3, "Zone border width", group = "Timeframe 2")
+period_tf2                          = input.int(5, title="Zigzag period", minval = 2, maxval = 500, group = "Timeframe 2")
+enable_one_percent                  = input(true, "Show 1%", group = "Timeframe 2")
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// Labels inputs                                                                  
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+showlabel                           = input(defval = true, title = "ZZ labels | ", group = "labels", inline = "1")
+showPrice                           = input(defval = false, title = "Show prices | ", group = "labels", inline = "1")
+showTF                              = input(defval = false, title = "Show timeframes", group = "labels", inline = "1")
+label_alpha                         = input(100, title = "Transparency", group = "labels")
+label_position                      = input.string("Close to price", title = "Position", options = ["Close to price", "Far from price"], group = "labels")
+sizeOption                          = input.string(title="Size", options=["Auto", "Huge", "Large", "Normal", "Small", "Tiny"], defval="Normal", group = "labels")
+labelSize                           = (sizeOption == "Huge") ? size.huge : (sizeOption == "Large") ? size.large : (sizeOption == "Small") ? size.small : (sizeOption == "Tiny") ? size.tiny : (sizeOption == "Auto") ? size.auto : size.normal
+label_offset                        = input(0, title = "Zone label offset", group = "labels")
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// Zone force inputs                                                                  
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+proven_factor                       = input(3, "Factor >=", group = "Proven", inline = "1")
+style_string_proven                 = input.string("Dashed", "Style", options = ["Dotted","Dashed","Solid"], group = "Proven", inline = "1")
+box_border_style_proven             = style_string_proven == 'Dotted' ? line.style_dotted : style_string_proven == 'Dashed' ? line.style_dashed : line.style_solid
+bull_color_proven                   = input.color(color.new(#09fe01, 80), 'Zone', group = "Proven", inline = "2")
+border_bull_color_proven            = input.color(color.new(#33ff00, 0), 'Border', group = "Proven", inline = "2")
+bear_color_proven                   = input.color(color.new(#ff0000, 80), ' Zone', group = "Proven", inline = "2")
+border_bear_color_proven            = input.color(color.new(#ff0000, 0), 'Border', group = "Proven", inline = "2")
+
+verified_factor                     = input(1, "Factor >=", group = "Verified", inline = "1")
+style_string_verified               = input.string("Dashed", "Style", options = ["Dotted","Dashed","Solid"], group = "Verified", inline = "1")
+box_border_style_verified           = style_string_verified == 'Dotted' ? line.style_dotted : style_string_verified == 'Dashed' ? line.style_dashed : line.style_solid
+bull_color_verified                 = input.color(color.new(#66bb6a, 80), 'Zone', group = "Verified", inline = "2")
+border_bull_color_verified          = input.color(color.new(#49b34c, 0), 'Border', group = "Verified", inline = "2")
+bear_color_verified                 = input.color(color.new(#f7525f, 85), ' Zone', group = "Verified", inline = "2")
+border_bear_color_verified          = input.color(color.new(#f7525f, 0), 'Border', group = "Verified", inline = "2")
+
+untested_factor                     = input(1, "Factor < ", group = "Untested", inline = "1")
+style_string_untested               = input.string("Dashed", "Style", options = ["Dotted","Dashed","Solid"], group = "Untested", inline = "1")
+box_border_style_untested           = style_string_untested == 'Dotted' ? line.style_dotted : style_string_untested == 'Dashed' ? line.style_dashed : line.style_solid
+bull_color_untested                 = input.color(color.new(#0026ff, 80), 'Zone', group = "Untested", inline = "2")
+border_bull_color_untested          = input.color(color.new(#0026ff, 0), 'Border', group = "Untested", inline = "2")
+bear_color_untested                 = input.color(color.new(#ff9800, 80), ' Zone', group = "Untested", inline = "2")
+border_bear_color_untested          = input.color(color.new(#ff9800, 0), 'Border', group = "Untested", inline = "2")
+
+color_side_market_tf1               = input.color(color.new(#eb00ff, 70), 'Up', group = "Side Market", inline = '1')
+color_side_market_tf2               = input.color(color.new(#eb00ff, 70), 'Down', group = "Side Market", inline = '1')
+
+upcol_zz                            = input(defval = color.lime, title = "Bull", group = "Zigzag", inline = "1") 
+dncol_zz                            = input(defval = color.red, title = "Bear", group = "Zigzag", inline = "1")
+zz_style_string                     = input.string("Dashed","Style",options = ["Dotted","Dashed","Solid"],group = 'Zigzag')
+zz_line_style = zz_style_string == 'Dotted' ? line.style_dotted : 
+      zz_style_string == 'Dashed' ? line.style_dashed : 
+      line.style_solid
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// Levels tf1 inputs                                                                  
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+levels1_number                      = input.int(20, "Qtd", minval = 0, group = "Levels Tf1")
+levels1_percent                     = input.float(0.5, "Percent", step = 0.1, group = "Levels Tf1") / 100
+levels1_back                        = input.int(0, "Back", minval = 0, maxval = 49, group = "Levels Tf1") * 2
+levels1_input_start                 = input.int(0, "Start", -9999999999, 9999999999, 1, group="Levels Tf1", tooltip = "Levels start bar")
+levels1_input_end                   = input.int(0, "End", -9999999999, 9999999999, 1, group="Levels Tf1", tooltip = "Levels end bar")
+levels1_width                       = input(1, "Width", group = "Levels Tf1")
+levels1_alpha                       = input.float(100, "Alpha", step = 1, group = "Levels Tf1")
+levels1_label_size_opt              = input.string(title="Size", options=["Auto", "Huge", "Large", "Normal", "Small", "Tiny"], group = "Levels Tf1", defval="Small")
+levels1_label_size           = (levels1_label_size_opt == "Huge") ? size.huge :
+     (levels1_label_size_opt == "Large") ? size.large :
+     (levels1_label_size_opt == "Small") ? size.small :
+     (levels1_label_size_opt == "Tiny") ? size.tiny :
+     (levels1_label_size_opt == "Auto") ? size.auto :
+         size.normal
+levels1_extendOption                = input.string("none", title="Extend", options=["none", "left", "right", "both"], group = "Levels Tf1")
+levels1_lineExtend = levels1_extendOption == "left" ? extend.left :
+      levels1_extendOption == "right" ? extend.right :
+      levels1_extendOption == "both" ? extend.both :
+      extend.none
+levels1_style_string                = input.string("Dashed","Style",options = ["Dotted","Dashed","Solid"],group = 'Levels Tf1')
+levels1_line_style = levels1_style_string == 'Dotted' ? line.style_dotted : 
+      levels1_style_string == 'Dashed' ? line.style_dashed : 
+      line.style_solid
+levels1_label_offset                = input(0, "Label offset", group = "Levels Tf1")
+levels1_up                          = input.color(color.new(#0055ff, 0), 'Up', group = "Levels Tf1", inline = '1')
+levels1_down                        = input.color(color.new(#ffa13d, 0), 'Down', group = "Levels Tf1", inline = '1')
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// Levels tf2 inputs                                                                  
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+levels2_number                      = input.int(10, "Qtd", minval = 0, group = "Levels Tf2")
+levels2_percent                     = input.float(0.5, "Percent", step = 0.1, group = "Levels Tf2") / 100
+levels2_back                        = input.int(0, "Back", minval = 0, maxval = 49, group = "Levels Tf2") * 2
+levels2_input_start                 = input.int(0, "Start", -9999999999, 9999999999, 1, group="Levels Tf2", tooltip = "Levels start bar")
+levels2_input_end                   = input.int(0, "End", -9999999999, 9999999999, 1, group="Levels Tf2", tooltip = "Levels end bar")
+levels2_width                       = input(2, "Width", group = "Levels Tf2")
+levels2_alpha                       = input.float(100, "Alpha", step = 1, group = "Levels Tf2")
+levels2_label_size_opt              = input.string(title="Size", options=["Auto", "Huge", "Large", "Normal", "Small", "Tiny"], group = "Levels Tf2", defval="Small")
+levels2_label_size           = (levels2_label_size_opt == "Huge") ? size.huge :
+     (levels2_label_size_opt == "Large") ? size.large :
+     (levels2_label_size_opt == "Small") ? size.small :
+     (levels2_label_size_opt == "Tiny") ? size.tiny :
+     (levels2_label_size_opt == "Auto") ? size.auto :
+         size.normal
+levels2_extendOption                = input.string("none", title="Extend", options=["none", "left", "right", "both"], group = "Levels Tf2")
+levels2_lineExtend = levels2_extendOption == "left" ? extend.left :
+      levels2_extendOption == "right" ? extend.right :
+      levels2_extendOption == "both" ? extend.both :
+      extend.none
+levels2_style_string                = input.string("Dashed","Style",options = ["Dotted","Dashed","Solid"],group = 'Levels Tf2')
+levels2_line_style = levels2_style_string == 'Dotted' ? line.style_dotted : 
+      levels2_style_string == 'Dashed' ? line.style_dashed : 
+      line.style_solid
+levels2_label_offset                = input(3, "Label offset", group = "Levels Tf2")
+levels2_up                          = input.color(color.new(#47ff3d, 0), 'Up', group = "Levels Tf2", inline = '1')
+levels2_down                        = input.color(color.new(#ff0000, 0), 'Down', group = "Levels Tf2", inline = '1')
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// VWAP inputs                                                                  
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+vwap_1_enable                       = input(false, "Enable | ", group = "Vwap 1", inline = '0')
+vwap_1_from_bar0                    = input(false,'Start At First Bar', group = "Vwap 1", inline = '0')
+vwap_1_start                        = input.time(timestamp("1 Jan 2023 09:00 GMT-3"), title = "Start", confirm=true, group = "Vwap 1")
+vwap_1_length                       = input(14, title = "Length", group = "Vwap 1")
+vwap_1_mult                         = input(0.25, title = "Multiplier", group = "Vwap 1")
+vwap_1_offset                       = input(0, title = "Offset", group = "Vwap 1")
+vwap_1_source                       = input.string('high', title = "Source", options=['open','high','low','close','hl2','hlc3','ohlc4'], group = "Vwap 1")
+vwap_1_event                        = input.string('Start', title = "Event", options=['Periodic','Higher High','Lower Low','Trend Change','Start','External Cross','External Event'], group = "Vwap 1")
+vwap_1_ext_src                      = input.source(open,'External Cross/Event', group = "Vwap 1")
+vwap_1_alpha                        = input.float(95, "Alpha", step = 1, group = "Vwap 1")
+vwap_1_width                        = input(1, "Width", group = "Vwap 1")
+vwap_1_color_up                     = input.color(color.new(#ff0000, 0), 'Up', group = "Vwap 1", inline = '1')
+vwap_1_color_mid                    = input.color(color.new(#fff700, 0), 'Md', group = "Vwap 1", inline = '1')
+vwap_1_color_down                   = input.color(color.new(#47ff3d, 0), 'Down', group = "Vwap 1", inline = '1')
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// Variables                                                                  
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+var box[] bear_array_tf1 = array.new_box()
+var box[] bull_array_tf1 = array.new_box()
+var int[] bearhitcount_tf1 = array.new_int()
+var int[] bullhitcount_tf1 = array.new_int()
+var label[] bearlabels_tf1 = array.new_label()
+var label[] bulllabels_tf1 = array.new_label()
+
+var box[] bear_array_tf2 = array.new_box()
+var box[] bull_array_tf2 = array.new_box()
+var int[] bearhitcount_tf2 = array.new_int()
+var int[] bullhitcount_tf2 = array.new_int()
+var label[] bearlabels_tf2 = array.new_label()
+var label[] bulllabels_tf2 = array.new_label()
+
+var max_array_size = 50
+var zigzag_tf1 = array.new_float(0)
+var zigzag_tf2 = array.new_float(0)
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// Functions                                                                  
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+f_security(_sym, _res, _src) =>
+    request.security(_sym, _res, _src[barstate.isrealtime ? 1 : 0], barmerge.gaps_off, lookahead=barmerge.lookahead_off)[barstate.isrealtime ? 0 : 1]
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+//                                                                 
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+f_getohlc(_ticker, _period, _open, _high, _low, _close) =>
+    f_security(_ticker, _period, _open)
+    f_security(_ticker, _period, _high)
+    f_security(_ticker, _period, _low)
+    f_security(_ticker, _period, _close)
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+//                                                                 
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+add_to_zigzag(p_zigzag, value, bindex)=>
+    array.unshift(p_zigzag, bindex)
+    array.unshift(p_zigzag, value)
+    if array.size(p_zigzag) > max_array_size
+        array.pop(p_zigzag)
+        array.pop(p_zigzag)
+    
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+//                                                                 
+//+---------------------------------------------------------------------------------------------------------------------------------------------+    
+update_zigzag(p_zigzag, value, bindex, p_dir, p_force)=>
+    if array.size(p_zigzag) == 0
+        add_to_zigzag(p_zigzag, value, bindex)
+    else
+        if (p_dir == 1 and value > array.get(p_zigzag, 0)) or (p_dir == -1 and value < array.get(p_zigzag, 0))
+            array.set(p_zigzag, 0, value)
+            array.set(p_zigzag, 1, bindex)
+        else if p_force
+            array.set(p_zigzag, 0, value)
+            array.set(p_zigzag, 1, bindex)
+        0.
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+//                                                                 
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+_getboxelements(_boxptr, _i) =>
+    _boxelement = array.get(_boxptr, _i)
+    _left       = box.get_left(_boxelement)
+    _top        = box.get_top(_boxelement)
+    _btm        = box.get_bottom(_boxelement)
+    _right      = box.get_right(_boxelement)
+    [_boxelement, _left, _top, _btm, _right]
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+//                                                                 
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// check for duplicate boxes required for eliminating duplicate higher timeframe fvg boxes, input 1: pointer to box array, input 2: bar_index which is left side of box in bar_index number
+_duplicate_box(_boxarray, _top, _bottom) =>
+    found = false
+    if array.size(_boxarray) > 0
+        for i = array.size(_boxarray) - 1 to 0 by 1       
+            [_barray,left,top,bottom,right] = _getboxelements(_boxarray,i) 
+            if _top == top and _bottom == bottom  //_left_bar_index == left
+                found := true
+                break
+    found
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+//                                                                 
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// simple strings require for label displays used in add_label ultimately
+_gettf_label_str(p_string) =>
+    result = switch p_string
+        "5" => "5m"
+        "10" => "10m"
+        "15" => "15m"
+        "30" => "30m"
+        "60" => "1h"
+        "120" => "2h"
+        "240" => "4h"
+        "480" => "8h"
+        "D" => "D"
+        "2D" => "2D"
+        "W" => "W"
+        "M" => "M"
+        "3M" => "3M"
+        "12M" => "Y"
+        => "Unsupported Timeframe"
+    result
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+//                                                                 
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+var lines_array1 = array.new_line()
+var lines_array2 = array.new_line()
+var onepercent_array1 = array.new_line()
+var onepercent_array2 = array.new_line()
+f_handle(p_tf, p_period, p_zigzag, p_zone_size, p_bear_array, p_bearlabels, p_bearhitcount, p_bull_array, p_bulllabels, p_bullhitcount) =>
+    string str_tf = _gettf_label_str(p_tf)
+    float ph = na 
+    float pl = na
+    var dir = 0
+
+    bool newbar = ta.change(time(p_tf)) 
+    var string ticker = syminfo.tickerid
+
+    //_bar_index=f_security(ticker, p_tf, bar_index)
+    _bar_index = bar_index
+    //_open =f_security(ticker, p_tf, open)
+    _high=f_security(ticker, p_tf, high)
+    _low=f_security(ticker, p_tf, low)
+    //_close=f_security(ticker, p_tf, close)
+
+    bi = ta.valuewhen(newbar, _bar_index, p_period - 1)
+    len = _bar_index - bi + 1
+    ph := ta.highestbars(_high, nz(len, 1)) == 0 ? _high : na
+    pl := ta.lowestbars(_low, nz(len, 1)) == 0 ? _low : na
+    dir := (ph and na(pl) ? 1 : (pl and na(ph) ? -1 : dir))
+    oldzigzag = array.copy(p_zigzag)
+
+    //index_high = f_security(ticker, p_tf, ta.highs)
+    bool dirchanged = (dir != dir[1])
+    int teste_offset = 1
+    if ph or pl
+        // if it's not the last bar and dir changed, update
+        if dirchanged
+            add_to_zigzag(p_zigzag, dir == 1 ? ph : pl, bar_index - teste_offset)     
+        else if not dirchanged
+            update_zigzag(p_zigzag, dir == 1 ? ph : pl, bar_index - teste_offset, dir, 0)
+
+    if array.size(p_zigzag) >= 4 and array.size(oldzigzag) >= 4
+        var line zzline = na 
+
+
+        if array.get(p_zigzag, 0) != array.get(oldzigzag, 0) or array.get(p_zigzag, 1) != array.get(oldzigzag, 1)
+            if array.get(p_zigzag, 2) == array.get(oldzigzag, 2) and array.get(p_zigzag, 3) == math.round(array.get(oldzigzag, 3))
+                if showzigzag1 and p_tf == tf1 and array.size(lines_array1) > 0
+                    indice1 = array.size(lines_array1) - 1 
+                    line.delete(array.get(lines_array1, indice1))
+                    array.pop(lines_array1)
+                if showzigzag2 and p_tf == tf2 and array.size(lines_array2) > 0
+                    indice2 = array.size(lines_array2) - 1 
+                    line.delete(array.get(lines_array2, indice2))
+                    array.pop(lines_array2)
+
+                    
+
+            int x1 = math.round(array.get(p_zigzag, 1))
+            int x2 = math.round(array.get(p_zigzag, 3))
+            float y1 = array.get(p_zigzag, 0)
+            float y2 = array.get(p_zigzag, 2)
+            if showzigzag1 and p_tf == tf1 
+                // zzline := line.new(x1 = x1, y1 = y1, x2 = x2, y2 = y2, color = dir == 1 ? upcol_zz : dncol_zz, width = 1, style = zz_line_style)
+                // line.delete(zzline[1])
+                array.push(lines_array1, line.new(x1 = x1, y1 = y1, x2 = x2, y2 = y2, color = dir == 1 ? upcol_zz : dncol_zz, width = 1, style = zz_line_style))
+            if showzigzag2 and p_tf == tf2
+                // zzline := line.new(x1 = x1, y1 = y1, x2 = x2, y2 = y2, color = dir == 1 ? upcol_zz : dncol_zz, width = 1, style = zz_line_style)
+                // line.delete(zzline[1])
+                array.push(lines_array2, line.new(x1 = x1, y1 = y1, x2 = x2, y2 = y2, color = dir == 1 ? upcol_zz : dncol_zz, width = 1, style = zz_line_style))
+
+            // bear logic 
+            if not _duplicate_box(p_bear_array, y2, y2 - y2 * p_zone_size)
+                string price_string = na
+                if showPrice and showTF
+                    price_string := str.tostring(y2) + " - " + str_tf
+                else if showPrice
+                    price_string := str.tostring(y2)
+                else if showTF
+                    price_string := str_tf
+
+                // inverted X location
+                array.push(p_bear_array, box.new(
+                  left = x2 + x_offset, 
+                  top = y2, 
+                  right = x1, 
+                  bottom = y2 - y2 * p_zone_size, 
+                  border_color = border_bear_color_untested, 
+                  border_width = 1, 
+                  bgcolor = bear_color_untested, 
+                  border_style = box_border_style_untested, 
+                  text = price_string, 
+                  text_color = border_bear_color_untested, 
+                  text_size = size.normal))
+                
+                array.push(p_bearlabels, showlabel ? label.new(
+                  x = x2, 
+                  y = y2,
+                  text = str_tf, 
+                  textcolor = border_bear_color_untested, 
+                  size = labelSize,
+                  color = color.rgb(0,0,0, label_alpha)) : na)
+                array.push(p_bearhitcount, 0)
+
+            if array.size(p_bear_array) > 0
+                for i = array.size(p_bear_array) - 1 to 0 by 1
+                    [id, left, top, bottom, right] = _getboxelements(p_bear_array,i)
+                    count = 0
+                    if _high > top or high > top
+                        box.delete(id)
+                        array.remove(p_bear_array, i)
+                        array.remove(p_bearhitcount, i)
+                        label.delete(array.get(p_bearlabels, i))
+                        array.remove(p_bearlabels, i)
+                        
+            // bull logic
+            if not _duplicate_box(p_bull_array, y1 + y1 * p_zone_size, y1)
+                string price_string = na
+                if showPrice and showTF
+                    price_string := str.tostring(y1) + " - " + str_tf
+                else if showPrice
+                    price_string := str.tostring(y1)
+                else if showTF
+                    price_string := str_tf
+
+                // inverted X location
+                array.push(p_bull_array, box.new(
+                  left = x1 + x_offset, 
+                  top = y1 + y1 * p_zone_size, 
+                  right = x1, 
+                  bottom = y1, 
+                  border_color = border_bull_color_untested, 
+                  border_width = 1, 
+                  bgcolor = bull_color_untested, 
+                  border_style = box_border_style_untested,
+                  text = price_string, 
+                  text_color = border_bull_color_untested, 
+                  text_size = size.normal))
+
+                array.push(p_bulllabels, showlabel ? label.new(
+                  x = x1, 
+                  y = y1, 
+                  text = str_tf, 
+                  textcolor = border_bull_color_untested, 
+                  size = labelSize,
+                  color = color.rgb(0,0,0, label_alpha)) : na)
+                array.push(p_bullhitcount, 0)
+
+            if array.size(p_bull_array) > 0
+                for i = array.size(p_bull_array) - 1 to 0 by 1
+                    [id, left, top, bottom, right] = _getboxelements(p_bull_array,i)
+                    if _low < bottom or low < bottom
+                        box.delete(id)
+                        array.remove(p_bull_array, i)
+                        array.remove(p_bullhitcount, i)
+                        label.delete(array.get(p_bulllabels, i))
+                        array.remove(p_bulllabels, i)
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+//                                                                 
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+f_check_hit(p_tf, p_zigzag, p_bear_array, p_bearlabels, p_bearhitcount, p_bull_array, p_bulllabels, p_bullhitcount, p_width) =>
+    //[_open, _high, _low, _close] = f_getohlc(syminfo.tickerid, p_tf, open[1], high[1], low[1], close[1])
+    var string ticker = syminfo.tickerid
+    _high=f_security(ticker, p_tf, high)
+    _low=f_security(ticker, p_tf, low)
+    // _high := high[1]
+    // _low := low[1]
+    int direction_zz = 0
+    float last_zz_price = 0 
+    float penultimate_zz_price = 0
+
+    if array.size(p_zigzag) >= 4
+        last_zz_price := array.get(p_zigzag, 0)
+        penultimate_zz_price := array.get(p_zigzag, 2)
+        direction_zz := last_zz_price >= penultimate_zz_price ? 1 : 0
+
+    if array.size(p_bear_array) > 0 and array.size(p_bearlabels) > 0
+        for i = 0 to array.size(p_bear_array) - 1
+            bearhitcount = array.get(p_bearhitcount, i)
+            label_id = array.get(p_bearlabels, i)
+            [boxid, boxleft, boxtop, boxbottom, boxright] = _getboxelements(p_bear_array,i)
+
+            if last_zz_price >= boxbottom and last_zz_price < boxtop and direction_zz == 1 and last_zz_price == _high
+                bearhitcount := bearhitcount + 1                
+                array.set(p_bearhitcount, i, bearhitcount)
+
+                if bearhitcount >= proven_factor
+                    box.set_bgcolor(boxid, bear_color_proven)
+                    box.set_border_color(boxid, border_bear_color_proven) 
+                    box.set_border_style(boxid, box_border_style_proven)
+                    box.set_text_color(boxid, border_bear_color_proven)
+                    box.set_border_width(boxid, p_width)
+                    label.set_textcolor(label_id, border_bear_color_proven)
+                else if bearhitcount >= verified_factor
+                    box.set_bgcolor(boxid, bear_color_verified)
+                    box.set_border_color(boxid, border_bear_color_verified) 
+                    box.set_border_style(boxid, box_border_style_verified)
+                    box.set_text_color(boxid, border_bear_color_verified)
+                    box.set_border_width(boxid, p_width)
+                    label.set_textcolor(label_id, border_bear_color_verified)
+                else if bearhitcount < untested_factor
+                    box.set_bgcolor(boxid, bear_color_verified)
+                    box.set_border_color(boxid, border_bear_color_untested)
+                    box.set_border_style(boxid, box_border_style_untested)
+                    box.set_text_color(boxid, border_bear_color_untested)
+                    box.set_border_width(boxid, p_width)
+                    label.set_textcolor(label_id, border_bear_color_untested)
+                    //label.set_text(label_id, label.get_text(label_id) + "(" + str.tostring(p_bearhitcount[i]) + ")")
+
+    if array.size(p_bull_array) > 0 and array.size(p_bulllabels) > 0
+        for i = 0 to array.size(p_bull_array) - 1
+            bullhitcount = array.get(p_bullhitcount, i)
+            label_id = array.get(p_bulllabels, i)
+            [boxid, boxleft, boxtop, boxbottom, boxright] = _getboxelements(p_bull_array,i)
+
+            if (last_zz_price <= boxtop) and (last_zz_price > boxbottom) and direction_zz == 0 and last_zz_price == _low
+                bullhitcount := bullhitcount + 1
+                array.set(p_bullhitcount, i, bullhitcount)
+
+                if bullhitcount >= proven_factor 
+                    box.set_bgcolor(boxid, bull_color_proven)
+                    box.set_border_color(boxid, border_bull_color_proven) 
+                    box.set_border_style(boxid, box_border_style_proven)
+                    box.set_text_color(boxid, border_bull_color_proven)
+                    box.set_border_width(boxid, p_width)
+                    label.set_textcolor(label_id, border_bull_color_proven)
+                else if bullhitcount >= verified_factor
+                    box.set_bgcolor(boxid, bull_color_verified)
+                    box.set_border_color(boxid, border_bull_color_verified) 
+                    box.set_border_style(boxid, box_border_style_verified)
+                    box.set_text_color(boxid, border_bull_color_verified)
+                    box.set_border_width(boxid, p_width)
+                    label.set_textcolor(label_id, border_bull_color_verified)
+                else if bullhitcount < untested_factor
+                    box.set_bgcolor(boxid, bull_color_untested)
+                    box.set_border_color(boxid, border_bull_color_untested)
+                    box.set_border_style(boxid, box_border_style_untested)
+                    box.set_text_color(boxid, border_bull_color_untested)
+                    box.set_border_width(boxid, p_width)
+                    label.set_textcolor(label_id, border_bull_color_untested)
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+//                                                                 
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// remove duplicated zones from arrays, leaving only higher timeframe zones
+f_check_priority(string p_zonetype, p_first_array, p_second_array)=>
+    int result = 0
+    if array.size(p_first_array) > 0
+        for i = 0 to array.size(p_first_array) - 1
+            first_id = array.get(p_first_array, i)
+            [firstid, firstleft, firsttop, firstbottom, firstright] = _getboxelements(p_first_array, i)
+            
+            if array.size(p_second_array) > 0
+                for j = 0 to array.size(p_second_array) - 1
+                    second_id = array.get(p_second_array, i)
+                    [secondid, secondleft, secondtop, secondbottom, secondright] = _getboxelements(p_second_array, j)
+
+                    if firsttop == secondtop and firstbottom == secondbottom
+                        if p_zonetype == "bull"
+                            if timeframe.in_seconds(tf1) >= timeframe.in_seconds(tf2)
+                                box.delete(secondid)
+                                label.delete(array.get(bulllabels_tf2, j))                        
+                            else
+                                box.delete(first_id)
+                                label.delete(array.get(bulllabels_tf1, i))
+                        
+                        if p_zonetype == "bear"
+                            if timeframe.in_seconds(tf1) >= timeframe.in_seconds(tf2)
+                                box.delete(secondid)
+                                label.delete(array.get(bearlabels_tf2, j))
+                            else
+                                box.delete(first_id)
+                                label.delete(array.get(bearlabels_tf1, i))
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+//                                                                 
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+f_update_strings(p_tf, p_array, p_point) =>
+    str_tf = _gettf_label_str(p_tf)
+    if array.size(p_array) > 0 
+        for i = array.size(p_array) - 1 to 0 by 1
+            boxid = array.get(p_array, i)
+            string price_string = na
+            if showPrice and showTF
+                price_string := str.tostring(p_point == "top" ? box.get_top(boxid) : box.get_bottom(boxid)) + " - " + str_tf
+            else if showPrice
+                price_string := str.tostring(p_point == "top" ? box.get_top(boxid) : box.get_bottom(boxid))
+            else if showTF
+                price_string := str_tf
+            box.set_text(boxid, price_string)
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+//                                                                 
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+f_updateLevels(array<box> p_boxarray, array<label> p_labelarray, p_zonetype, p_tf) =>
+    if array.size(p_boxarray) > 0 
+        for i = array.size(p_boxarray) - 1 to 0 by 1
+            boxid = array.get(p_boxarray, i)
+            labelid = array.get(p_labelarray, i)
+            int x1 = box.get_left(boxid)
+            int x2 = box.get_right(boxid)
+            top = box.get_top(boxid)
+            bottom = box.get_bottom(boxid)
+            float position = 0
+            if label_position == "Close to price"
+                position := p_zonetype == "sup" ? top : bottom
+            else
+                position := p_zonetype == "res" ? bottom : top  
+
+            if (short_mode_zz)
+                box.set_left(boxid, bar_index + input_start_zz)
+                label.set_xy(labelid, bar_index + input_end_zz + label_offset, position)
+            else
+                label.set_xy(labelid, bar_index + label_offset, position)
+                label.set_style(labelid, label.style_label_left)
+                label.set_yloc(labelid, yloc.price)
+
+            box.set_right(boxid, bar_index + input_end_zz)
+            _width = p_tf == tf1 ? border_width_tf1 : border_width_tf2
+            box.set_border_width(boxid, _width)
+
+
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+//                                                                 
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+f_ProcessZones(p_bear_array, p_bearlabels, p_bearhitcount, p_bull_array, p_bulllabels, p_bullhitcount, p_detect, p_color)=>
+
+    // timeframe 1 logic
+    box id_bear1 = na, top_bear1 = 0., bottom_bear1 = 0., mid_bear1 = 0.
+    box id_bear2 = na, top_bear2 = 0., bottom_bear2 = 0., mid_bear2 = 0.
+    box id_bull1 = na, top_bull1 = 0., bottom_bull1 = 0., mid_bull1 = 0.
+    box id_bull2 = na, top_bull2 = 0., bottom_bull2 = 0., mid_bull2 = 0.
+    if array.size(p_bear_array) > 0
+        for i = array.size(p_bear_array) - 1 to 0
+            [id, left, top, bottom, right] = _getboxelements(p_bear_array,i)
+            if high > top
+                box.delete(id)
+                array.remove(p_bear_array, i)
+                array.remove(p_bearhitcount, i)
+                label.delete(array.get(p_bearlabels, i))
+                array.remove(p_bearlabels, i)
+
+        if p_detect and array.size(p_bear_array) > 1
+            id_bear1 := array.get(p_bear_array, array.size(p_bear_array) - 1)
+            top_bear1 := box.get_top(id_bear1)
+            bottom_bear1 := box.get_bottom(id_bear1)
+            mid_bear1 := (top_bear1 + bottom_bear1) / 2
+
+            id_bear2 := array.get(p_bear_array, array.size(p_bear_array) - 2)
+            top_bear2 := box.get_top(id_bear2)
+            bottom_bear2 := box.get_bottom(id_bear2)
+            mid_bear2 := (top_bear2 + bottom_bear2) / 2
+                
+    if array.size(p_bull_array) > 0
+        for i = array.size(p_bull_array) - 1 to 0
+            [id, left, top, bottom, right] = _getboxelements(p_bull_array,i)
+            if low < bottom
+                box.delete(id)
+                array.remove(p_bull_array, i)
+                array.remove(p_bullhitcount, i)
+                label.delete(array.get(p_bulllabels, i))
+                array.remove(p_bulllabels, i)
+
+        if p_detect and array.size(p_bull_array) > 1
+            id_bull1 := array.get(p_bull_array, array.size(p_bull_array) - 1)
+            top_bull1 := box.get_top(id_bull1)
+            bottom_bull1 := box.get_bottom(id_bull1)
+            mid_bull1 := (top_bull1 + bottom_bull1) / 2
+
+            id_bull2 := array.get(p_bull_array, array.size(p_bull_array) - 2)
+            top_bull2 := box.get_top(id_bull2)
+            bottom_bull2 := box.get_bottom(id_bull2)
+            mid_bull2 := (top_bull2 + bottom_bull2) / 2
+
+            // zzlabel1 = label.new(bar_index + 3, high, str.tostring(mid_bear1), color = color.rgb(0, 0, 0, 100), textcolor = color.rgb(255, 42, 0), yloc = yloc.price)
+            // label.delete(zzlabel1[1])
+            // zzlabel2 = label.new(bar_index + 3, low, str.tostring(mid_bull1), color = color.rgb(0, 0, 0, 100), textcolor = color.rgb(4, 255, 0), yloc = yloc.price)
+            // label.delete(zzlabel2[1])
+
+    if p_detect
+        if mid_bull1 >= bottom_bear1 or mid_bull1 >= bottom_bear2
+            box.set_bgcolor(id_bull1, p_color)
+            box.set_border_color(id_bull1, color.new(p_color, 0))
+
+        if mid_bull2 >= bottom_bear1 or mid_bull2 >= bottom_bear2
+            box.set_bgcolor(id_bull2, p_color)
+            box.set_border_color(id_bull2, color.new(p_color, 0))
+
+        if mid_bear1 <= top_bull1 or mid_bear1 <= top_bull2
+            box.set_bgcolor(id_bear1, p_color)
+            box.set_border_color(id_bear1, color.new(p_color, 0))
+
+        if mid_bear2 <= top_bull1 or mid_bear2 <= top_bull2
+            box.set_bgcolor(id_bear2, p_color)
+            box.set_border_color(id_bear2, color.new(p_color, 0))    
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+//                                                                 
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+f_drawLevels(p_zigzag, p_number, p_back, p_percent, p_alpha, p_extend, p_colorup, p_colordown, p_style, p_width, p_label_size, p_start_offset, p_end_offset, p_offset)=>
+    var label_array_pos = array.new_label(p_number)
+    var label_array_neg = array.new_label(p_number)
+    var line_array_pos = array.new_line(p_number)
+    var line_array_neg = array.new_line(p_number)
+    if array.size(p_zigzag) >= 4
+        var line zzline = na
+        var label zzlabel = na
+        
+        y2 = array.get(p_zigzag, p_back)
+        y1 = array.get(p_zigzag, p_back + 2)   
+        x2 = array.get(p_zigzag, p_back + 1)
+        x1 = array.get(p_zigzag, p_back + 3)
+
+        if p_extend == extend.none
+            x2 := bar_index
+
+        if p_start_offset != 0
+            x1 := bar_index + p_start_offset
+        if p_end_offset != 0
+            x2 := bar_index + p_end_offset
+
+        dir = y2 >= y1 ? 1 : -1
+
+        for i = 0 to array.size(line_array_pos) - 1 by 1
+            zzline := line.new(
+                  x1 = int(x1), 
+                  y1 = y1 + (y1 * p_percent * i * dir), 
+                  x2 = int(x2), 
+                  y2 = y1 + (y1 * p_percent * i * dir), 
+                  color = dir == 1 ? p_colorup : p_colordown, 
+                  style = p_style,
+                  width = p_width, 
+                  extend = p_extend)
+            array.push(line_array_pos, zzline)
+            line.delete(array.shift(line_array_pos))
+
+            zzline := line.new(
+                  x1 = int(x1), 
+                  y1 = y1 - (y1 * p_percent * i * dir), 
+                  x2 = int(x2), 
+                  y2 = y1 - (y1 * p_percent * i * dir), 
+                  color = dir == 1 ? p_colordown : p_colorup, 
+                  style = p_style,
+                  width = p_width, 
+                  extend = p_extend)
+            array.push(line_array_neg, zzline)
+            line.delete(array.shift(line_array_neg))
+            
+            zzlabel := label.new(
+                  x = int(x2) + p_offset, 
+                  y = y1 + (y1 * p_percent * i * dir), 
+                  text = str.tostring(100 * p_percent * i * dir) + "%", 
+                  color = color.rgb(0, 0, 0, p_alpha), 
+                  size = p_label_size,
+                  style = label.style_label_left,
+                  textcolor = dir == 1 ? p_colorup : p_colordown, 
+                  yloc = yloc.price)
+            array.push(label_array_pos, zzlabel)
+            label.delete(array.shift(label_array_pos))
+
+            zzlabel := label.new(
+                  x = int(x2) + p_offset, 
+                  y = y1 - (y1 * p_percent * i * dir), 
+                  text = str.tostring(-100 * p_percent * i * dir) + "%", 
+                  color = color.rgb(0, 0, 0, p_alpha), 
+                  size = p_label_size,
+                  style = label.style_label_left,
+                  textcolor = dir == 1 ? p_colordown : p_colorup, 
+                  yloc = yloc.price)
+            array.push(label_array_neg, zzlabel)
+            label.delete(array.shift(label_array_neg))
+            
+        // if barstate.islast
+        //     zzlabel1 = label.new(bar_index, low, str.tostring(array.size(line_array_pos)), color = color.rgb(0, 0, 0, 100), textcolor = color.rgb(255, 42, 0), yloc = yloc.price)
+        //     label.delete(zzlabel1[1])
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+//                                                                 
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+f_calcVwap(p_enable, p_source, p_ext_source, p_length, p_mult, p_event, p_start, p_from)=>
+    if p_enable == false
+        [false, 0, 0]     
+
+    var t = 0
+    var csum_num = 0.
+    var csum_den = 0.
+    var var_num = 0.
+    var var_den = 0.
+
+    src = switch p_source
+        'open'  => open
+        'high'  => high
+        'low'   => low
+        'close' => close
+        'hl2'   => hl2
+        'hlc3'  => hlc3
+        'ohlc4' => ohlc4
+
+    upper = ta.highest(p_length)
+    lower = ta.lowest(p_length)
+    os = math.round(ta.stoch(src, src, src, p_length)/100)
+    start_time = p_from ? true : time >= p_start
+
+    event_condition = switch p_event
+        'Periodic'       => t % p_length == 0
+        'Higher High'    => upper > upper[1]
+        'Lower Low'      => lower < lower[1]
+        'Trend Change'   => os != os[1]
+        'Start'          => false
+        'External Cross' => ta.cross(src, p_ext_source)
+        'External Event' => p_ext_source != 0
+
+    if start_time
+        csum_num += src * volume
+        csum_den += volume
+        var_num += src * src * volume
+        t += 1
+        if event_condition
+            csum_num := src * volume
+            csum_den := volume
+            var_num := src * src * volume
+
+    pvwap = csum_num / csum_den
+    dev = math.sqrt(var_num / csum_den - pvwap * pvwap) * p_mult 
+
+    [event_condition, pvwap, dev]  
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+//                                                                 
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+f_drawProjection(p_one_percent) =>
+    if p_one_percent and array.size(bull_array_tf2) > 0
+        for i = array.size(bull_array_tf2)-1 to 0 by 1
+            line zzline = na
+            [id, left, top, bottom, right] = _getboxelements(bull_array_tf2,i)
+            hitcount = array.get(bullhitcount_tf2, i)
+            color cor = na
+            string estilo = na
+            if hitcount >= proven_factor 
+                cor := border_bull_color_proven
+                estilo := box_border_style_proven
+            else if hitcount >= verified_factor
+                cor := border_bull_color_verified
+                estilo := box_border_style_verified
+            else if hitcount < untested_factor
+                cor := border_bull_color_untested
+                estilo := box_border_style_untested
+
+            zzline := line.new(
+                  x1 = left, 
+                  y1 = bottom + bottom * 0.01, 
+                  x2 = right, 
+                  y2 = bottom + bottom * 0.01, 
+                  color = cor, 
+                  style = estilo,
+                  width = border_width_tf2)
+            array.push(onepercent_array2, zzline)
+            //line.delete(array.shift(onepercent_array2))
+
+    if p_one_percent and array.size(bear_array_tf2) > 0
+        for i = array.size(bear_array_tf2)-1 to 0 by 1
+            line zzline = na
+            [id, left, top, bottom, right] = _getboxelements(bear_array_tf2,i)
+            hitcount = array.get(bearhitcount_tf2, i)
+            color cor = na
+            string estilo = na
+            if hitcount >= proven_factor 
+                cor := border_bear_color_proven
+                estilo := box_border_style_proven
+            else if hitcount >= verified_factor
+                cor := border_bear_color_verified
+                estilo := box_border_style_verified
+            else if hitcount < untested_factor
+                cor := border_bear_color_untested
+                estilo := box_border_style_untested
+
+            zzline := line.new(
+                  x1 = left, 
+                  y1 = top - top * 0.01, 
+                  x2 = right, 
+                  y2 = top - top * 0.01, 
+                  color = cor, 
+                  style = estilo,
+                  width = border_width_tf2)
+            array.push(onepercent_array1, zzline)
+            //line.delete(array.shift(onepercent_array2))
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// Main logic                                                                
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+if enable_tf1 and enable_tf2
+    if ta.change(time(tf1))
+        f_handle(tf1, period_tf1, zigzag_tf1, zone_size_tf1, bear_array_tf1, bearlabels_tf1, bearhitcount_tf1, bull_array_tf1, bulllabels_tf1, bullhitcount_tf1)
+        f_check_hit(tf1, zigzag_tf1, bear_array_tf1, bearlabels_tf1, bearhitcount_tf1, bull_array_tf1, bulllabels_tf1, bullhitcount_tf1, border_width_tf1)
+
+    if ta.change(time(tf2))
+        f_handle(tf2, period_tf2, zigzag_tf2, zone_size_tf2, bear_array_tf2, bearlabels_tf2, bearhitcount_tf2, bull_array_tf2, bulllabels_tf2, bullhitcount_tf2)
+        f_check_hit(tf2, zigzag_tf2, bear_array_tf2, bearlabels_tf2, bearhitcount_tf2, bull_array_tf2, bulllabels_tf2, bullhitcount_tf2, border_width_tf2)
+else if enable_tf1 and ta.change(time(tf1))
+    f_handle(tf1, period_tf1, zigzag_tf1, zone_size_tf1, bear_array_tf1, bearlabels_tf1, bearhitcount_tf1, bull_array_tf1, bulllabels_tf1, bullhitcount_tf1)
+    f_check_hit(tf1, zigzag_tf1, bear_array_tf1, bearlabels_tf1, bearhitcount_tf1, bull_array_tf1, bulllabels_tf1, bullhitcount_tf1, border_width_tf1)
+else if enable_tf2 and ta.change(time(tf2))
+    f_handle(tf2, period_tf2, zigzag_tf2, zone_size_tf2, bear_array_tf2, bearlabels_tf2, bearhitcount_tf2, bull_array_tf2, bulllabels_tf2, bullhitcount_tf2)
+    f_check_hit(tf2, zigzag_tf2, bear_array_tf2, bearlabels_tf2, bearhitcount_tf2, bull_array_tf2, bulllabels_tf2, bullhitcount_tf2, border_width_tf2)
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// Secondary logic                                                           
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+if barstate.islast
+    if enable_tf1
+        f_updateLevels(bear_array_tf1, bearlabels_tf1, "res", tf1)
+        f_updateLevels(bull_array_tf1, bulllabels_tf1, "sup", tf1)
+        f_ProcessZones(bear_array_tf1, bearlabels_tf1, bearhitcount_tf1, bull_array_tf1, bulllabels_tf1, bullhitcount_tf1, detect_side_market_tf1, color_side_market_tf1)
+        if levels1_enable
+            f_drawLevels(zigzag_tf1, levels1_number, levels1_back, levels1_percent, levels1_alpha, 
+                  levels1_lineExtend, levels1_up, levels1_down, levels1_line_style, levels1_width, levels1_label_size, levels1_input_start, levels1_input_end, levels1_label_offset)
+    if enable_tf2
+        f_updateLevels(bear_array_tf2, bearlabels_tf2, "res", tf2)
+        f_updateLevels(bull_array_tf2, bulllabels_tf2, "sup", tf2)
+        f_ProcessZones(bear_array_tf2, bearlabels_tf2, bearhitcount_tf2, bull_array_tf2, bulllabels_tf2, bullhitcount_tf2, detect_side_market_tf2, color_side_market_tf2)
+        // f_drawProjection(enable_one_percent)
+        if levels2_enable
+            f_drawLevels(zigzag_tf2, levels2_number, levels2_back, levels2_percent, levels2_alpha, 
+                  levels2_lineExtend, levels2_up, levels2_down, levels2_line_style, levels2_width, levels2_label_size, levels2_input_start, levels2_input_end, levels2_label_offset)
+            
+    
+    
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// VWAP logic                                                                
+//+---------------------------------------------------------------------------------------------------------------------------------------------+    
+[event_condition_1, pvwap_1, dev_1] = f_calcVwap(vwap_1_enable, vwap_1_source, vwap_1_ext_src, vwap_1_length, vwap_1_mult, vwap_1_event, vwap_1_start, vwap_1_from_bar0)
+
+vwap_1_up10 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 + (vwap_1_offset + 10) * dev_1,'Upper', color=vwap_1_color_up, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_up9 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 + (vwap_1_offset + 9) * dev_1,'Upper', color=vwap_1_color_up, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_up8 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 + (vwap_1_offset + 8) * dev_1,'Upper', color=vwap_1_color_up, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_up7 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 + (vwap_1_offset + 7) * dev_1,'Upper', color=vwap_1_color_up, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_up6 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 + (vwap_1_offset + 6) * dev_1,'Upper', color=vwap_1_color_up, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_up5 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 + (vwap_1_offset + 5) * dev_1,'Upper', color=vwap_1_color_up, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_up4 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 + (vwap_1_offset + 4) * dev_1,'Upper', color=vwap_1_color_up, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_up3 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 + (vwap_1_offset + 3) * dev_1,'Upper', color=vwap_1_color_up, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_up2 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 + (vwap_1_offset + 2) * dev_1,'Upper', color=vwap_1_color_up, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_up = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 + (vwap_1_offset + 1) * dev_1,'Upper', color=vwap_1_color_up, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_mid = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1,'Basis', color=vwap_1_color_mid, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_down = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 - (vwap_1_offset + 1) * dev_1,'Lower', color=vwap_1_color_down, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_down2 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 - (vwap_1_offset + 2) * dev_1,'Lower', color=vwap_1_color_down, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_down3 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 - (vwap_1_offset + 3) * dev_1,'Lower', color=vwap_1_color_down, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_down4 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 - (vwap_1_offset + 4) * dev_1,'Lower', color=vwap_1_color_down, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_down5 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 - (vwap_1_offset + 5) * dev_1,'Lower', color=vwap_1_color_down, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_down6 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 - (vwap_1_offset + 6) * dev_1,'Lower', color=vwap_1_color_down, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_down7 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 - (vwap_1_offset + 7) * dev_1,'Lower', color=vwap_1_color_down, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_down8 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 - (vwap_1_offset + 8) * dev_1,'Lower', color=vwap_1_color_down, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_down9 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 - (vwap_1_offset + 9) * dev_1,'Lower', color=vwap_1_color_down, style=plot.style_linebr, linewidth = vwap_1_width)
+vwap_1_down10 = plot(event_condition_1 or not vwap_1_enable ? na : pvwap_1 - (vwap_1_offset + 10) * dev_1,'Lower', color=vwap_1_color_down, style=plot.style_linebr, linewidth = vwap_1_width)
+fill(vwap_1_up10, vwap_1_mid, color=color.new(vwap_1_color_up, vwap_1_alpha))
+fill(vwap_1_mid, vwap_1_down10, color=color.new(vwap_1_color_down, vwap_1_alpha))
+    
+
+
+
+
+
+input_show_debug            = input.bool(title="Show Debug Text", defval=false)
+
+// set to true to display debug messages
+show_debug = input_show_debug
+debug = ''
+
+
+
+f_RemoveDuplicateLines(p_array) =>
+    for i = array.size(p_array) - 1 to 1
+        x2 = line.get_x2(array.get(p_array, i))
+        last_x2 = line.get_x2(array.get(p_array, i - 1))
+        if x2 == last_x2 and x2 >0 and last_x2>0
+            array.remove(p_array, i - 1)
+            line.delete(array.get(p_array, i - 1))
+    
+    // indice = array.size(p_array) - 1
+    // line.delete(array.get(p_array, 0))
+    // line.delete(array.get(p_array, 1))
+
+
+
+
+        
+        
+        
+
+
+
+
+// *****************************************
+// *** LIBRARY TO PRINT DEBUG DATA *********
+// *****************************************
+get_num(value) =>
+    value < 10 ? '0' + str.tostring(value) : str.tostring(value)
+
+get_date() =>
+    get_num(month) + '/' + get_num(dayofmonth) + '/' + get_num(year) + ' ' + get_num(hour) + ':' + get_num(minute)
+
+var log_time   = array.new_string(0)
+var log_msg    = array.new_string(0)
+log_print(message) =>
+    array.push(log_time,    get_date())
+    array.push(log_msg,     message)
+
+if barstate.islast 
+
+    log_show =      show_debug  //input.bool(true,    title = "Show Log?",               group = "Log")
+    log_show_msg =  1           //input.int(5,        title = "# of message to show",    group = "Log")
+    log_offset =    0           //input.int(0,        title = "# of messages to offset", group = "Log")
+    
+    // LOGGING FUNCTION /// 
+    
+
+    if log_show
+
+        log_print(debug)
+    
+        var log_table = table.new(position=position.top_right,columns=1,rows=log_show_msg+1)
+        // Show headers at top
+    //    table.cell(log_table,0, 0, 'Debug', bgcolor=color.gray, text_size=size.small)
+        //table.cell(log_table, 1, 0, 'Time',  bgcolor=color.gray, text_size=size.small)
+    
+        for i = 1 to log_show_msg by 1
+        
+            arr_i = array.size(log_msg) - log_show_msg + i - 1 - log_offset
+    
+            if arr_i < 0
+                break
+    
+            // Show each row
+            table.cell(log_table, 0, i, array.get(log_msg, arr_i), bgcolor=color.rgb(0,0,0,0),  text_size=size.small, text_color=color.rgb(255,255,255,0))
+           // table.cell(log_table, 1, i, array.get(log_time, arr_i), bgcolor=color.rgb(0,0,0,0), text_size=size.small, text_color=color.rgb(255,255,255,0))
+
+
+if barstate.islast
+    // f_RemoveDuplicateLines(lines_array1)
+    if show_debug
+        debug += "close[1]="+str.tostring(close[1])
+        debug += "\n bull_array_tf2="+str.tostring(array.size(bull_array_tf2))
+
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+// Experimental                                                            
+//+---------------------------------------------------------------------------------------------------------------------------------------------+
+
+// Update zigzag last line logic
+f_timeToString(_t) =>
+    str.tostring(year(_t), "0000") + "." + str.tostring(month(_t), "00") + "." + str.tostring(dayofmonth(_t), "00") + " " + str.tostring(hour(_t), "00") + ":" + str.tostring(minute(_t), "00") + ":" + str.tostring(second(_t), "00")
+
+var array_highs = high
+var array_lows = low
+
+f_updateRange(p_zigzag, p_lines, p_back, p_curr_price, p_curr_index, p_prev_price, p_previ_index, p_dir)=>
+
+    //var line zzline = na 
+    if array.size(p_lines)>0
+        line_id = array.get(p_lines, array.size(p_lines) - 1 - p_back)
+        current_x2 = line.get_x2(line_id)
+        start_point = line.get_x1(line_id)
+        current_y2 = line.get_y2(line_id)
+        current_y1 = line.get_y1(line_id)
+
+        //if p_dir >= 0
+        array.set(p_zigzag, 0, p_curr_price)
+        array.set(p_zigzag, 1, start_point - p_curr_index + 1)
+        array.set(p_zigzag, 2, p_prev_price)
+        array.set(p_zigzag, 3, start_point - p_previ_index + 1)
+        line.set_x1(line_id, int(start_point - p_curr_index + 1))
+        line.set_x2(line_id, int(start_point - p_previ_index + 1)) 
+        line.set_y1(line_id, p_curr_price)
+        line.set_y2(line_id, p_prev_price) 
+        //else
+            //line.set_x1(line_id, int(start_point))
+        //     line.set_x1(line_id, int(current_x1 - 20))
+        //     line.set_x2(line_id, int(current_x2))
+
+        1
+
+f_getRangeInfo(p_zigzag, p_back)=>
+    offset = 0
+    if p_back > 0
+        offset := p_back * 4
+
+    if array.size(p_zigzag) >= 8
+        string c_timestring1 = na, string c_timestring2 = na
+        c_indexHigh = 0, c_indexLow = 0, c_locHigh = 0.0, c_locLow = 1000000.0, c_dir = 0, 
+        c_price2 = 0.0, c_price1 = 0.0, c_index2 = 0.0, c_index1 = 0.0, c_time1 = 0, c_time2 = 0, c_bar_Index1 = 0.0, c_bar_Index2 = 0.0
+
+        string p_timestring1 = na, string p_timestring2 = na
+        p_indexHigh = 0, p_indexLow = 0, p_locHigh = 0.0, p_locLow = 1000000.0, p_dir = 0, 
+        p_price2 = 0.0, p_price1 = 0.0, p_index2 = 0.0, p_index1 = 0.0, p_time1 = 0, p_time2 = 0, p_bar_Index1 = 0.0, p_bar_Index2 = 0.0
+
+        c_index2 := array.get(p_zigzag, offset + 1)
+        c_index1 := array.get(p_zigzag, offset + 3)
+        if bar_index - 1 == c_index2
+            
+            // c_price2 := array.get(p_zigzag, offset + 0)
+            // c_price1 := array.get(p_zigzag, offset + 2)
+            c_dir := c_price2 >= c_price1 ? 1 : -1
+            // c_time1 := time[c_index1]
+            // c_time2 := time[c_index2]
+            // c_timestring1 := f_timeToString(c_time1)
+            // c_timestring2 := f_timeToString(c_time2)            
+            c_bar_Index1 := bar_index - c_index1
+            c_bar_Index2 := bar_index - c_index2
+            for i = c_bar_Index1 to c_bar_Index2 by 1
+                if array_highs[i] >= c_locHigh
+                    c_locHigh := array_highs[i]
+                    c_indexHigh := int(i)
+
+            for i = c_bar_Index1 to c_bar_Index2 by 1
+                if array_lows[i] <= c_locLow
+                    c_locLow := array_lows[i]
+                    c_indexLow := int(i)
+
+            //offset := (p_back + 1) * 4
+            p_index2 := c_index1
+            p_index1 := array.get(p_zigzag, offset + 5)
+            // p_price2 := c_price1
+            // p_price1 := array.get(p_zigzag, offset + 4)
+            p_dir := p_price2 >= p_price1 ? 1 : -1
+            // p_time1 := time[p_index1]
+            // p_time2 := time[p_index2]
+            // p_timestring1 := f_timeToString(p_time1)
+            // p_timestring2 := f_timeToString(p_time2)            
+            p_bar_Index1 := bar_index - p_index1
+            p_bar_Index2 := bar_index - p_index2
+            for i = p_bar_Index1 to p_bar_Index2 by 1
+                if array_highs[i] >= p_locHigh
+                    p_locHigh := array_highs[i]
+                    p_indexHigh := int(i)
+
+            for i = p_bar_Index1 to p_bar_Index2 by 1
+                if array_lows[i] <= p_locLow
+                    p_locLow := array_lows[i]
+                    p_indexLow := int(i)
+                    
+            // if c_dir >= 0        
+            //     f_updateRange(zigzag_tf2, lines_array2, 0, c_locHigh, c_indexHigh, p_locLow, p_indexLow, c_dir)
+            // else
+            //     f_updateRange(zigzag_tf2, lines_array2, 0, c_locLow, c_indexLow, p_locHigh, p_indexHigh, c_dir)
+
+            // zzlabel1 = label.new(bar_index, close, str.tostring(p_zigzag), color = color.rgb(0, 0, 0, 100), textcolor = color.rgb(255, 42, 0), yloc = yloc.price)
+            // label.delete(zzlabel1[1])
+        [c_indexHigh, c_indexLow, c_locHigh, c_locLow, c_dir, c_bar_Index1, c_bar_Index2, c_index1, c_index2, c_price1, c_price2, c_time1, c_time2, c_timestring1, c_timestring2,
+          p_indexHigh, p_indexLow, p_locHigh, p_locLow, p_dir, p_bar_Index1, p_bar_Index2, p_index1, p_index2, p_price1, p_price2, p_time1, p_time2, p_timestring1, p_timestring2]
+
+
+
+// [current_indexHigh, current_indexLow, current_locHigh, current_locLow, current_dir, current_bar_Index1,
+//       current_bar_Index2, current_index1, current_index2, current_price1, current_price2, a1,a2,a3,a4,
+//       prev_indexHigh, prev_indexLow, prev_locHigh, prev_locLow, prev_dir, prev_bar_Index1, 
+//       prev_bar_Index2, prev_index1, prev_index2, prev_price1, prev_price2, b1,b2,b3,b4] = f_getRangeInfo(zigzag_tf2, 0)   
+
+// [prev_indexHigh, prev_indexLow, prev_locHigh, prev_locLow, prev_dir, prev_bar_Index1, 
+//       prev_bar_Index2, prev_index1, prev_index2, prev_price1, prev_price2] = f_getRangeInfo(zigzag_tf2, 0)  
+                
+
+// plotchar(bar_index, "bar_index", "", location.bottom, size = size.small)  
+// plotchar(time_close, "time", "", location.bottom, size = size.small)  
+
+// plotchar(current_index2, "current_index2", "", location.bottom, size = size.small)
+// plotchar(current_index1, "current_index1", "", location.bottom, size = size.small)
+// plotchar(current_dir, "current_dir", "", location.bottom, size = size.small)
+// plotchar(current_locHigh, "current_locHigh", "", location.bottom, size = size.small)
+// plotchar(current_indexHigh, "current_indexHigh", "", location.bottom, size = size.small)
+// plotchar(current_locLow, "current_locLow", "", location.bottom, size = size.small)
+// plotchar(current_indexLow, "current_indexLow", "", location.bottom, size = size.small)
+// plotchar(current_bar_Index2, "current_bar_Index2", "", location.bottom, size = size.small)
+// plotchar(current_bar_Index1, "current_bar_Index1", "", location.bottom, size = size.small)
+
+// plotchar(prev_index2, "prev_index2", "", location.bottom, size = size.small)
+// plotchar(prev_index1, "prev_index1", "", location.bottom, size = size.small)
+// plotchar(prev_dir, "prev_dir", "", location.bottom, size = size.small)
+// plotchar(prev_locHigh, "prev_locHigh", "", location.bottom, size = size.small)
+// plotchar(prev_indexHigh, "prev_indexHigh", "", location.bottom, size = size.small)
+// plotchar(prev_locLow, "prev_locLow", "", location.bottom, size = size.small)
+// plotchar(prev_indexLow, "prev_indexLow", "", location.bottom, size = size.small)
+// plotchar(prev_bar_Index2, "prev_bar_Index2", "", location.bottom, size = size.small)
+// plotchar(prev_bar_Index1, "prev_bar_Index1", "", location.bottom, size = size.small)
+
+
+
+// if barstate.islast
+//     zzlabel1 = label.new(int(prev_index2), prev_price2, str.tostring(prev_timestring1), color = color.rgb(0, 0, 0, 100), textcolor = color.rgb(255, 42, 0), yloc = yloc.price)
+//     label.delete(zzlabel1[1])
+
+//     zzlabel2 = label.new(int(prev_index1), prev_price1, str.tostring(prev_timestring2), color = color.rgb(0, 0, 0, 100), textcolor = color.rgb(255, 42, 0), yloc = yloc.price)
+//     label.delete(zzlabel2[1])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// // VWAP logic
+// vwap_2_enable                       = input(false, "Enable", group = "Vwap 2", inline = "1")
+// vwap_2_start                        = input.time(timestamp("1 Jan 2023"), confirm=true, group = "Vwap 2", inline = "1")
+// vwap_2_from_bar0                    = input(false,'Start At First Bar', group = "Vwap 2", inline = "1")
+// vwap_2_length                       = input(14, group = "Vwap 2", inline = "1")
+// vwap_2_mult                         = input(0.25, group = "Vwap 2", inline = "1")
+// vwap_2_source                       = input.string('low', options=['open','high','low','close','hl2','hlc3','ohlc4'], group = "Vwap 2", inline = "2")
+// vwap_2_event                        = input.string('Start', options=['Periodic','Higher High','Lower Low','Trend Change','Start','External Cross','External Event'], group = "Vwap 2", inline = "2")
+// vwap_2_ext_src                      = input.source(open,'External Cross/Event', group = "Vwap 2", inline = "2")
+// vwap_2_color_up                     = input.color(color.new(#ff0000, 0), 'Up', group = "Vwap 2", inline = "2")
+// vwap_2_color_mid                    = input.color(color.new(#fff700, 0), 'Md', group = "Vwap 2", inline = "2")
+// vwap_2_color_down                   = input.color(color.new(#47ff3d, 0), 'Down', group = "Vwap 2", inline = "2")
+// vwap_2_alpha                        = input.float(95, "Alpha", step = 1, group = "Vwap 2", inline = "2")
+   
+
+// plot vwap 1
+
+
+
+// // plot vwap 2
+// [event_condition_2, pvwap_2, dev_2] = f_calcVwap(vwap_2_enable, vwap_2_source, vwap_2_ext_src, vwap_2_length, vwap_2_mult, vwap_2_event, vwap_2_start, vwap_2_from_bar0)
+
+// // vwap_2_up10 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 + 10 * dev_2,'Upper', color=vwap_2_color_up, style=plot.style_linebr)
+// // vwap_2_up9 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 + 9 * dev_2,'Upper', color=vwap_2_color_up, style=plot.style_linebr)
+// // vwap_2_up8 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 + 8 * dev_2,'Upper', color=vwap_2_color_up, style=plot.style_linebr)
+// vwap_2_up7 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 + 7 * dev_2,'Upper', color=vwap_2_color_up, style=plot.style_linebr)
+// vwap_2_up6 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 + 6 * dev_2,'Upper', color=vwap_2_color_up, style=plot.style_linebr)
+// vwap_2_up5 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 + 5 * dev_2,'Upper', color=vwap_2_color_up, style=plot.style_linebr)
+// vwap_2_up4 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 + 4 * dev_2,'Upper', color=vwap_2_color_up, style=plot.style_linebr)
+// vwap_2_up3 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 + 3 * dev_2,'Upper', color=vwap_2_color_up, style=plot.style_linebr)
+// vwap_2_uprice2 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 + 2 * dev_2,'Upper', color=vwap_2_color_up, style=plot.style_linebr)
+// vwap_2_up = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 + dev_2,'Upper', color=vwap_2_color_up, style=plot.style_linebr)
+// vwap_2_mid = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2,'Basis', color=vwap_2_color_mid, style=plot.style_linebr)
+// vwap_2_down = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 - dev_2,'Lower', color=vwap_2_color_down, style=plot.style_linebr)
+// vwap_2_down2 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 - 2 * dev_2,'Lower', color=vwap_2_color_down, style=plot.style_linebr)
+// vwap_2_down3 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 - 3 * dev_2,'Lower', color=vwap_2_color_down, style=plot.style_linebr)
+// vwap_2_down4 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 - 4 * dev_2,'Lower', color=vwap_2_color_down, style=plot.style_linebr)
+// vwap_2_down5 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 - 5 * dev_2,'Lower', color=vwap_2_color_down, style=plot.style_linebr)
+// vwap_2_down6 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 - 6 * dev_2,'Lower', color=vwap_2_color_down, style=plot.style_linebr)
+// vwap_2_down7 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 - 7 * dev_2,'Lower', color=vwap_2_color_down, style=plot.style_linebr)
+// // vwap_2_down8 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 - 8 * dev_2,'Lower', color=vwap_2_color_down, style=plot.style_linebr)
+// // vwap_2_down9 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 - 9 * dev_2,'Lower', color=vwap_2_color_down, style=plot.style_linebr)
+// // vwap_2_down10 = plot(event_condition_2 or not vwap_2_enable ? na : pvwap_2 - 10 * dev_2,'Lower', color=vwap_2_color_down, style=plot.style_linebr)
+// fill(vwap_2_up7, vwap_2_mid, color=color.new(vwap_2_color_up, vwap_2_alpha))
+// fill(vwap_2_mid, vwap_2_down7, color=color.new(vwap_2_color_down, vwap_2_alpha))
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
